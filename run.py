@@ -1,32 +1,40 @@
-from handlers.messages import *
-from handlers.init import *
+from aiogram.types import BotCommand
 
-dp.register_message_handler(start_cmd_handler, commands=['start'], state='*')
-dp.register_message_handler(get_sticker_id_handler, content_types=['sticker'], state='*')
+from handlers.messages import messages_router 
+from core.config import bot, dp
 
-dp.register_message_handler(make_preview_handler, content_types=['text', 'photo'], state='*')
+import asyncio
+
+dp.include_router(messages_router)
 
 
 async def set_default_commands(dp):
-    await dp.bot.set_my_commands(
+    await bot.set_my_commands(
         [
-            BotCommand('start', 'Перезапуск бота')
+            BotCommand(
+                command='start', 
+                description='Перезапуск бота'
+                )
         ]
     )
 
 
 async def start(dispatcher) -> None:
-    bot_name = dict(await dispatcher.bot.get_me()).get('username')
+    bot_name = dict(await bot.get_me()).get('username')
     await set_default_commands(dispatcher)
     print(f'#    start on @{bot_name}')
 
 
 async def end(dispatcher) -> None:
-    bot_name = dict(await dispatcher.bot.get_me()).get('username')
+    bot_name = dict(await bot.get_me()).get('username')
     print(f'#    end on @{bot_name}')
 
 
-if __name__ == '__main__':
-    executor.start_polling(dispatcher=dp,
-                           on_startup=start,
-                           on_shutdown=end)
+async def main():
+    await start(dispatcher=dp)
+    await dp.start_polling(bot)
+    await end(dispatcher=dp)
+    
+
+if __name__ == "__main__":
+    asyncio.run(main())

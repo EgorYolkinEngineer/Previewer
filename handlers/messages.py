@@ -1,11 +1,21 @@
-from utils.image_processing import make_preview
-from handlers.init import *
-import asyncio
-import os
-import io
+from aiogram.types import Message
+from aiogram import F, Router
+from aiogram.filters import Command, CommandStart
+from aiogram.types import FSInputFile
+
+from services.images_service import make_preview
+
+from core.config import bot
+from core import config
+
+import asyncio, os
+
+messages_router = Router(name="messages")
 
 
-async def start_cmd_handler(msg: Message,):
+@messages_router.message(Command(commands=["start"],
+                                 prefix="/"))
+async def start_cmd_handler(msg: Message):
 
     answer = ('Привет, *%s*!👋\n\n'
               'Отправь мне текст для твоего заголовка.\n'
@@ -40,57 +50,80 @@ async def start_cmd_handler(msg: Message,):
               '⚠ *Флаги применяются так*:\n'
               '/flag { значение }') % msg.from_user.first_name
 
-    await msg.answer_sticker(sticker='CAACAgIAAxkBAAN7ZFD2m2SgAxweWK9uflY2iieRfEQAAlEAAyRxYhrpRxtfxj-nIy8E')
+    await msg.answer_sticker(sticker=config.START_MESSAGE_STICKER_ID)
     await msg.answer(text=answer, parse_mode='markdown')
+    
+    
+def get_text_data(msg: Message) -> tuple[str, str]:
+    if msg.caption:
+        textsplit = [i.strip().replace('\n', '') 
+                     for i in msg.caption.split('\n\n', 
+                                                maxsplit=1)]
+    else:
+        textsplit = [i.strip().replace('\n', '') 
+                     for i in msg.text.split('\n\n', 
+                                             maxsplit=1)]
+    
+    if len(textsplit) > 1:
+        text, description = textsplit
+    else:
+        text, description = (textsplit[0], str())
+        
+    return (text, description)
 
 
+async def get_image_data(msg: Message, 
+                         text: str, 
+                         description: str, 
+                         img_path: str
+                         ) -> tuple:
+    if msg.photo:
+        image_file = await bot.get_file(file_id=msg.photo[-1].file_id)
+        
+        await bot.download_file(image_file.file_path, 
+                                destination=img_path)
+
+        flags, img = make_preview(text, description, msg.from_user.id, True)
+    else:
+        flags, img = make_preview(text, description, msg.from_user.id)
+        
+    return flags, img
+
+
+@messages_router.message()
 async def make_preview_handler(msg: Message):
     answer_msg = await msg.answer(text='⌛')
 
     try:
-        if msg.photo:
-            # список для хранения корутин загрузки фотографий
-            download_tasks = []
-
-            # обходим список фотографий и создаем корутину для каждой
-            for photo in msg.photo:
-                download_tasks.append(
-                    photo.download(destination_file='./source/service/%s-background.jpg' % msg.from_user.id))
-
-            # запускаем загрузку всех фотографий параллельно
-            await asyncio.gather(*download_tasks)
-
-            text, description = msg.caption.split('\n\n', maxsplit=1)
-            flags, img = make_preview(text, description, msg.from_user.id, True)
-        else:
-            text, description = msg.text.split('\n\n')
-            flags, img = make_preview(text, description, msg.from_user.id)
-
-        byte_img = io.BytesIO()
-        img.save(byte_img, format='JPEG')
-        byte_img.seek(0)
+        text, description = get_text_data(msg=msg)
+        
+        img_path = './source/service/%s-background.jpg' % msg.from_user.id
+        
+        flags, img = await get_image_data(msg=msg, 
+                                    text=text, 
+                                    description=description, 
+                                    img_path=img_path)
+        img.save(img_path)
+        
+        upload_photo = FSInputFile(img_path)
 
         if flags.get('f', False):
-            img_path = './source/service/%s-background.jpg' % msg.from_user.id
-            img.save(img_path)
-            await msg.answer_document(document=open(img_path, 'rb'))
+            await msg.answer_document(document=upload_photo)
         else:
-            await msg.answer_photo(photo=byte_img)
+            await msg.answer_photo(photo=upload_photo)
+
         img.close()
-        byte_img.close()
+        
         try:
             os.remove('./source/service/%s-background.jpg' % msg.from_user.id)
         except FileNotFoundError:
             ...
-    except FileNotFoundError:
-        ...
     except Exception as error:
-        await msg.answer_sticker(sticker='CAACAgIAAxkBAAN5ZFD2fS4yNhKmu1QU5JOcaz5ktPwAAk8AAyRxYhpYzOfip1OVSC8E')
+        await msg.answer_sticker(
+            sticker='CAACAgIAAxkBAAN5ZFD2fS4yNhKmu1QU5JOcaz5ktPwAAk8AAyRxYhpYzOfip1OVSC8E')
         await msg.answer(text='🙃 Ошибка обработки. Возможно, вы указали некорректные флаги.\n\n'
                               '⚠ %s' % error)
-    await answer_msg.delete()
 
-
+@messages_router.message()
 async def get_sticker_id_handler(msg: Message):
-    await msg.answer_sticker(sticker=msg.sticker.file_id)
-    print(msg.sticker.file_id)
+    answer = "Пиши /start 🦄"
