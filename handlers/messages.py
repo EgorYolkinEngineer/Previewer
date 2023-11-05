@@ -13,8 +13,7 @@ import asyncio, os
 messages_router = Router(name="messages")
 
 
-@messages_router.message(Command(commands=["start"],
-                                 prefix="/"))
+@messages_router.message(CommandStart())
 async def start_cmd_handler(msg: Message):
 
     answer = ('Привет, *%s*!👋\n\n'
