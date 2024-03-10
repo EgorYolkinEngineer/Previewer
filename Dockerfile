@@ -1,11 +1,9 @@
-FROM python:3.11.4
+FROM python:3.11
 
 WORKDIR /previewer
 
-RUN pip install --upgrade pip
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
 COPY . .
 
-CMD ["python", "run.py"]
+RUN python3 -m pip install -r requirements.txt
+
+CMD python3 run.py
